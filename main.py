@@ -125,6 +125,9 @@ def main():
                     kwargs["run"] = "1"
                 elif "dir99" in image_file:
                     kwargs["run"] = "2"
+            elif "PCASL" in image_file:
+                bids_modality = "asl"
+                folder = "asl"
             else:
                 folder = None
                 bids_modality = None
