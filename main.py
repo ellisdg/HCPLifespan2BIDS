@@ -2,6 +2,7 @@ import argparse
 import os
 import glob
 import shutil
+import re
 
 
 def parse_args():
@@ -18,16 +19,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def move_to_bids(image_file, bids_dir, subject_id, modality, method="hardlink", overwrite=False, dryrun=False,
+def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="hardlink", overwrite=False, dryrun=False,
                  **kwargs):
-    if modality in ["T1w", "T2w"]:
-        folder = "anat"
-    elif modality == "bold":
-        folder = "func"
-    elif modality == "dwi":
-        folder = "dwi"
-    else:
-        raise ValueError("Unknown modality: {}".format(modality))
+
     args = ["sub-{}".format(subject_id)]
     for key, value in kwargs.items():
         args.append("{}-{}".format(key, value))
@@ -36,14 +30,28 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, method="hardlink", 
     json_sidecar = image_file.replace(".nii.gz", ".json")
     output_json_sidecar = output_file.replace(".nii.gz", ".json")
 
+    in_files = [image_file, json_sidecar]
+    out_files = [output_file, output_json_sidecar]
+    if modality == "dwi":
+        for in_file in in_files:
+            # check for bval and bvec files
+            bval_file = in_file.replace(".nii.gz", ".bval")
+            bvec_file = in_file.replace(".nii.gz", ".bvec")
+            if os.path.exists(bval_file):
+                in_files.append(bval_file)
+                out_files.append(output_file.replace(".nii.gz", ".bval"))
+            if os.path.exists(bvec_file):
+                in_files.append(bvec_file)
+                out_files.append(output_file.replace(".nii.gz", ".bvec"))
+
     if os.path.exists(output_file) and not overwrite:
         print("File already exists: {}".format(output_file))
         return
     elif os.path.exists(output_file) and overwrite:
         print("Overwriting file: {}".format(output_file))
         if not dryrun:
-            os.remove(output_file)
-            os.remove(json_sidecar)
+            for file in out_files:
+                os.remove(file)
 
     print_text = "{} --> {}".format(image_file, output_file)
 
@@ -53,23 +61,23 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, method="hardlink", 
     if method == "hardlink":
         print("Creating hardlink: {}".format(print_text))
         if not dryrun:
-            os.link(image_file, output_file)
-            os.link(json_sidecar, output_json_sidecar)
+            for in_file, out_file in zip(in_files, out_files):
+                os.link(in_file, out_file)
     elif method == "symlink":
         print("Creating symlink: {}".format(print_text))
         if not dryrun:
-            os.symlink(image_file, output_file)
-            os.link(json_sidecar, output_json_sidecar)
+            for in_file, out_file in zip(in_files, out_files):
+                os.symlink(in_file, out_file)
     elif method == "copy":
         print("Copying file: {}".format(print_text))
         if not dryrun:
-            shutil.copy(image_file, output_file)
-            os.link(json_sidecar, output_json_sidecar)
+            for in_file, out_file in zip(in_files, out_files):
+                shutil.copy(in_file, out_file)
     elif method == "move":
         print("Moving file: {}".format(print_text))
         if not dryrun:
-            shutil.move(image_file, output_file)
-            os.link(json_sidecar, output_json_sidecar)
+            for in_file, out_file in zip(in_files, out_files):
+                shutil.move(in_file, out_file)
     else:
         raise ValueError("Unknown method: {}".format(method))
 
@@ -81,21 +89,54 @@ def main():
     for subject_folder in subject_folders:
         subject_id = os.path.basename(subject_folder).split("_")[0]
 
-        image_files = glob.glob(os.path.join(subject_folder, "unprocessed/*.nii.gz"))
+        image_files = glob.glob(os.path.join(subject_folder, "unprocessed/**.nii.gz"), recursive=True)
         for image_file in image_files:
-            if "T1w" in image_file:
+            kwargs = dict()
+
+            if "_AP" in image_file:
+                kwargs["dir"] = "AP"
+            elif "_PA" in image_file:
+                kwargs["dir"] = "PA"
+
+            if "SpinEchoFieldMap" in image_file:
+                bids_modality = "epi"
+                folder = "fmap"
+                run = os.path.basename(os.path.dirname(image_file))
+                if "_" in run:
+                    run = run.split("_")[1]
+                match = re.search(r"SpinEchoFieldMap(\d+)", image_file)
+                if match:
+                    run = run + match.group(1)
+                kwargs["run"] = run
+            elif "T1w" in image_file:
+                folder = "anat"
                 bids_modality = "T1w"
             elif "T2w" in image_file:
+                folder = "anat"
                 bids_modality = "T2w"
             elif "fMRI" in image_file:
+                folder = "func"
                 bids_modality = "bold"
             elif "Diffusion" in image_file:
+                folder = "dwi"
                 bids_modality = "dwi"
+                # TODO: check which one comes first dir98 or dir99
+                if "dir98" in image_file:
+                    kwargs["run"] = "1"
+                elif "dir99" in image_file:
+                    kwargs["run"] = "2"
             else:
+                folder = None
                 bids_modality = None
                 print("Unknown modality: {}".format(image_file))
-            move_to_bids(image_file=image_file, bids_dir=args.output_dir, subject_id=subject_id,
-                         modality=bids_modality, method=args.method, overwrite=args.overwrite, dryrun=args.dry_run)
+
+            if "SBRef" in image_file:
+                # overwrite the modality to be sbref
+                bids_modality = "sbref"
+
+            move_to_bids(image_file=image_file, bids_dir=args.output_dir, subject_id=subject_id, folder=folder,
+                         modality=bids_modality, method=args.method, overwrite=args.overwrite, dryrun=args.dry_run,
+                         **kwargs)
 
 
 if __name__ == "__main__":
