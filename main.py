@@ -27,11 +27,15 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
         args.append("{}-{}".format(key, value))
     args.append(modality)
     output_file = os.path.join(bids_dir, "sub-{}".format(subject_id), folder, "_".join(args) + ".nii.gz")
+    in_files = [image_file]
+    out_files = [output_file]
     json_sidecar = image_file.replace(".nii.gz", ".json")
-    output_json_sidecar = output_file.replace(".nii.gz", ".json")
+    if os.path.exists(json_sidecar):
+        in_files.append(json_sidecar)
+        out_files.append(output_file.replace(".nii.gz", ".json"))
+    else:
+        print("No JSON sidecar found for {}".format(image_file))
 
-    in_files = [image_file, json_sidecar]
-    out_files = [output_file, output_json_sidecar]
     if modality == "dwi":
         for in_file in in_files:
             # check for bval and bvec files
