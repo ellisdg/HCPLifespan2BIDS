@@ -2,7 +2,9 @@ import argparse
 import os
 import glob
 import shutil
-import re
+import copy
+import warnings
+import json
 
 
 def parse_args():
@@ -16,28 +18,58 @@ def parse_args():
     parser.add_argument("--overwrite", action="store_true", help="overwrite existing files.")
     parser.add_argument("--method", type=str, default="hardlink", choices=["hardlink", "symlink", "copy", "move"],
                         help="method to use for linking files.")
+    parser.add_argument("--use_bids_uris", action="store_true",
+                        help="use BIDS URIs for setting the IntendedFor field for single bad reference and spin echo "
+                             "images. This is now required by BIDS, but I am not making it the default because fMRIprep"
+                             " does not support it yet.")
     return parser.parse_args()
 
 
-def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="hardlink", overwrite=False, dryrun=False,
-                 **kwargs):
-
+def generate_output_filename(subject_id, modality, folder, **kwargs):
     args = ["sub-{}".format(subject_id)]
     for key, value in kwargs.items():
         args.append("{}-{}".format(key, value))
     args.append(modality)
-    output_file = os.path.join(bids_dir, "sub-{}".format(subject_id), folder, "_".join(args) + ".nii.gz")
+    return os.path.join(folder, "_".join(args) + ".nii.gz")
+
+
+def generate_intended_for(subject_id, modality, folder, bids_uris=False, **kwargs):
+    if bids_uris:
+        return "bids::sub-{}/{}".format(subject_id, generate_output_filename(subject_id, modality, folder, **kwargs))
+    else:
+        return generate_output_filename(subject_id, modality, folder, **kwargs)
+
+
+def add_intended_for_to_json(json_file, intended_for):
+    if os.path.exists(json_file):
+        print("Adding IntendedFor to {}".format(json_file))
+        with open(json_file, "r") as f:
+            json_dict = json.load(f)
+    else:
+        print("Adding IntendedFor to new JSON file: {}".format(json_file))
+        json_dict = dict()
+    json_dict["IntendedFor"] = intended_for
+    with open(json_file, "w") as f:
+        json.dump(json_dict, f, indent=4, sort_keys=True)
+
+
+def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="hardlink", overwrite=False, dryrun=False,
+                 intended_for=None, **kwargs):
+    output_file = os.path.join(bids_dir,
+                               "sub-{}".format(subject_id),
+                               generate_output_filename(subject_id, modality, folder, **kwargs))
     in_files = [image_file]
     out_files = [output_file]
     json_sidecar = image_file.replace(".nii.gz", ".json")
+    output_json_sidecar = output_file.replace(".nii.gz", ".json")
     if os.path.exists(json_sidecar):
         in_files.append(json_sidecar)
-        out_files.append(output_file.replace(".nii.gz", ".json"))
+        out_files.append(output_json_sidecar)
     else:
-        print("No JSON sidecar found for {}".format(image_file))
+        warnings.warn("No JSON sidecar found for {}".format(image_file))
 
     if modality == "dwi":
-        for in_file in in_files:
+        for in_file in copy.copy(in_files):
             # check for bval and bvec files
             bval_file = in_file.replace(".nii.gz", ".bval")
             bvec_file = in_file.replace(".nii.gz", ".bvec")
@@ -85,33 +117,76 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
     else:
         raise ValueError("Unknown method: {}".format(method))
 
+    if intended_for is not None and not dryrun:
+        add_intended_for_to_json(output_json_sidecar, intended_for)
+
 
 def main():
     args = parse_args()
 
-    subject_folders = glob.glob(os.path.join(args.nda_dir, "imagingcollection01/HC*"))
+    wildcard = os.path.join(args.nda_dir, "imagingcollection01/HC*")
+    print("Searching for subjects with wildcard: {}".format(wildcard))
+    subject_folders = glob.glob(wildcard)
+    print("Found {} subjects.".format(len(subject_folders)))
     for subject_folder in subject_folders:
+        print("Processing subject: {}".format(subject_folder))
         subject_id = os.path.basename(subject_folder).split("_")[0]
 
-        image_files = glob.glob(os.path.join(subject_folder, "unprocessed/**.nii.gz"), recursive=True)
+        image_files = glob.glob(os.path.join(subject_folder, "unprocessed/**/*.nii.gz"), recursive=True)
+        print("Found {} image files.".format(len(image_files)))
         for image_file in image_files:
-            kwargs = dict()
 
-            if "_AP" in image_file:
+            if os.path.dirname(image_file).endswith("OTHER_FILES"):
+                continue
+
+            print("Processing image file: {}".format(image_file))
+
+            kwargs = dict()
+            intended_for = None
+
+            if "_AP" in os.path.basename(image_file):
                 kwargs["dir"] = "AP"
-            elif "_PA" in image_file:
+            elif "_PA" in os.path.basename(image_file):
                 kwargs["dir"] = "PA"
 
             if "SpinEchoFieldMap" in image_file:
                 bids_modality = "epi"
                 folder = "fmap"
-                run = os.path.basename(os.path.dirname(image_file))
+                basename = os.path.basename(os.path.dirname(image_file))
+                run = basename.lower()
                 if "_" in run:
-                    run = run.split("_")[1]
-                match = re.search(r"SpinEchoFieldMap(\d+)", image_file)
-                if match:
-                    run = run + match.group(1)
+                    run = "".join(run.split("_")[1:]).lower()
+                # match = re.search(r"SpinEchoFieldMap(\d+)", image_file)
+                # if match:
+                #     run = run + match.group(1)
                 kwargs["run"] = run
+
+                # figure out the IntendedFor filename
+                intended_for_kwargs = {"subject_id": subject_id, "bids_uris": args.use_bids_uris}
+                set_intended_for = True
+                if "fMRI" in basename:
+                    intended_for_kwargs["modality"] = "bold"
+                    intended_for_kwargs["folder"] = "func"
+                    intended_for_kwargs["task"] = basename.split("_")[1].lower()
+                    intended_for_kwargs["dir"] = basename.split("_")[2]
+                    if "rest" in intended_for_kwargs["task"]:
+                        intended_for_kwargs["run"] = intended_for_kwargs["task"].split("rest")[1]
+                        intended_for_kwargs["task"] = "rest"
+                elif "PCASL" in basename:
+                    intended_for_kwargs["modality"] = "asl"
+                    intended_for_kwargs["folder"] = "asl"
+                elif "T1w" in basename:
+                    intended_for_kwargs["modality"] = "T1w"
+                    intended_for_kwargs["folder"] = "anat"
+                elif "T2w" in basename:
+                    intended_for_kwargs["modality"] = "T2w"
+                    intended_for_kwargs["folder"] = "anat"
+                else:
+                    warnings.warn("Unknown IntendedFor modality: {}. "
+                                  "Not setting IntendedFor field for {}".format(basename, image_file))
+                    set_intended_for = False
+                if set_intended_for:
+                    intended_for = generate_intended_for(**intended_for_kwargs)
             elif "T1w" in image_file:
                 folder = "anat"
                 bids_modality = "T1w"
@@ -121,10 +196,18 @@ def main():
             elif "fMRI" in image_file:
                 folder = "func"
                 bids_modality = "bold"
+                task = os.path.basename(os.path.dirname(image_file))
+                if "_" in task:
+                    task = task.split("_")[1].lower()
+                if "rest" in task:
+                    run = task.split("rest")[1]
+                    task = "rest"
+                    kwargs["run"] = run
+                kwargs["task"] = task
             elif "Diffusion" in image_file:
                 folder = "dwi"
                 bids_modality = "dwi"
-                # TODO: check which one comes first dir98 or dir99
+                # dir 98 scans are acquired before dir99 scans
                 if "dir98" in image_file:
                     kwargs["run"] = "1"
                 elif "dir99" in image_file:
@@ -138,12 +221,14 @@ def main():
                 print("Unknown modality: {}".format(image_file))
 
             if "SBRef" in image_file:
+                intended_for = generate_intended_for(subject_id=subject_id, modality=bids_modality, folder=folder,
+                                                     bids_uris=args.use_bids_uris, **kwargs)
                 # overwrite the modality to be sbref
                 bids_modality = "sbref"
 
             move_to_bids(image_file=image_file, bids_dir=args.output_dir, subject_id=subject_id, folder=folder,
                          modality=bids_modality, method=args.method, overwrite=args.overwrite, dryrun=args.dry_run,
-                         **kwargs)
+                         intended_for=intended_for, **kwargs)
 
 
 if __name__ == "__main__":
