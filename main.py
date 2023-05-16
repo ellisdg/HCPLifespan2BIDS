@@ -27,8 +27,11 @@ def parse_args():
 
 def generate_output_filename(subject_id, modality, folder, **kwargs):
     args = ["sub-{}".format(subject_id)]
-    for key, value in kwargs.items():
-        args.append("{}-{}".format(key, value))
+    # Makes sure the arguments are added in the correct order
+    for key in ("ses", "task", "acq", "ce", "rec", "dir", "run", "recording", "echo", "part"):
+        if key in kwargs:
+            value = kwargs[key]
+            args.append("{}-{}".format(key, value))
     args.append(modality)
     return os.path.join(folder, "_".join(args) + ".nii.gz")
 
@@ -79,6 +82,8 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
             if os.path.exists(bvec_file):
                 in_files.append(bvec_file)
                 out_files.append(output_file.replace(".nii.gz", ".bvec"))
+
+    # TODO: add physio, eye tracking, and other files
 
     if os.path.exists(output_file) and not overwrite:
         print("File already exists: {}".format(output_file))
