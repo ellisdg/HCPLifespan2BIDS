@@ -34,6 +34,17 @@ def parse_args():
 def generate_output_filename(subject_id, modality, folder, extension=".nii.gz", **kwargs):
     args = ["sub-{}".format(subject_id)]
     # Makes sure the arguments are added in the correct order
+    # fix run if it has 1a, 1b, 2a, 2b
+    if "run" in kwargs:
+        if kwargs["run"] == "1a":
+            kwargs["run"] = 1
+        elif kwargs["run"] == "1b":
+            kwargs["run"] = 2
+        elif kwargs["run"] == "2a":
+            kwargs["run"] = 3
+        elif kwargs["run"] == "2b":
+            kwargs["run"] = 4
+
     for key in ("ses", "task", "acq", "ce", "rec", "dir", "run", "recording", "echo", "part"):
         if key in kwargs:
             value = kwargs[key]
@@ -82,6 +93,10 @@ def write_bids_dataset_metadata_files(bids_dir, name):
     # write bidsignore
     with open(os.path.join(bids_dir, ".bidsignore"), "w") as f:
         f.write("*.mp4\n")
+        # TODO: convert physio files to tsv and make sure the correct columns are there
+        f.write("*_physio.csv\n")
+        # TODO: fix metadata for ASL files so that it conforms to BIDS standard
+        f.write("perf/\n")
 
 
 def get_dataset_name(name, subject_id):
@@ -165,8 +180,7 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
                     f.write("\t".join(row) + "\n")
 
     if os.path.exists(output_file) and not overwrite:
-        print("File already exists: {}".format(output_file))
-        return
+        raise FileExistsError("File already exists: {}".format(output_file))
     elif os.path.exists(output_file) and overwrite:
         print("Overwriting file: {}".format(output_file))
         if not dryrun:
@@ -236,29 +250,29 @@ def fix_epi_runs(bids_dir):
     # the first run will be 1, the second run will be 2, etc.
     fmap_folders = glob.glob(os.path.join(bids_dir, "sub-*", "fmap"))
     for fmap_folder in fmap_folders:
-        epi_runs = glob.glob(os.path.join(fmap_folder, "*epi.nii.gz"))
-        new_runs = list()
-        if len(epi_runs) == 0:
-            continue
-        elif len(epi_runs) == 1:
-            # use regular expression to remove the run value from the filename
-            new_file_name = re.sub(r"_run-\w+_", "_", epi_runs[0])
-            new_runs.append(new_file_name)
-        else:
-            # sort the epi runs by acquisition time
-            epi_runs.sort(key=lambda x: get_acquisition_time(x))
-            for i, epi_run in enumerate(epi_runs):
-                index = len(glob.glob(re.sub(r"_run-\w+_", "_run-*_", epi_run))) + 1
-                # use regular expression to replace the run value from the filename
-                new_file_name = re.sub(r"_run-\w+_", "_run-{}_".format(index), epi_run)
+        for dir in ("AP", "PA"):  # this is a bit of a hack to just get the epi runs for the same direction
+            epi_runs = glob.glob(os.path.join(fmap_folder, "*dir-{}*epi.nii.gz".format(dir)))
+            new_runs = list()
+            if len(epi_runs) == 0:
+                continue
+            elif len(epi_runs) == 1:
+                # use regular expression to remove the run value from the filename
+                new_file_name = re.sub(r"_run-\w+_", "_", epi_runs[0])
                 new_runs.append(new_file_name)
-        for old_run, new_run in zip(epi_runs, new_runs):
-            print("Renaming {} to {}".format(old_run, new_run))
-            shutil.move(old_run, new_run)
-            old_json = old_run.replace(".nii.gz", ".json")
-            new_json = new_run.replace(".nii.gz", ".json")
-            print("Renaming {} to {}".format(old_json, new_json))
-            shutil.move(old_json, new_json)
+            else:
+                # sort the epi runs by acquisition time
+                epi_runs.sort(key=lambda x: get_acquisition_time(x))
+                for i, epi_run in enumerate(epi_runs):
+                    # use regular expression to replace the run value from the filename
+                    new_file_name = re.sub(r"_run-\w+_", "_run-{:02d}_".format(i + 1), epi_run)
+                    new_runs.append(new_file_name)
+            for old_run, new_run in zip(epi_runs, new_runs):
+                print("Renaming {} to {}".format(old_run, new_run))
+                shutil.move(old_run, new_run)
+                old_json = old_run.replace(".nii.gz", ".json")
+                new_json = new_run.replace(".nii.gz", ".json")
+                print("Renaming {} to {}".format(old_json, new_json))
+                shutil.move(old_json, new_json)
 
 
 def main():
@@ -315,6 +329,7 @@ def main():
                 elif "PCASL" in basename:
                     intended_for_kwargs["modality"] = "asl"
                     intended_for_kwargs["folder"] = "perf"
+                    intended_for_kwargs["dir"] = basename.split("_")[2]
                 elif "T1w" in basename:
                     intended_for_kwargs["modality"] = "T1w"
                     intended_for_kwargs["folder"] = "anat"
@@ -354,7 +369,7 @@ def main():
                     kwargs["run"] = "2"
             elif "PCASL" in image_file:
                 bids_modality = "asl"
-                folder = "asl"
+                folder = "perf"
             else:
                 folder = None
                 bids_modality = None
