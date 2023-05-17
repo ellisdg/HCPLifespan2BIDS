@@ -6,6 +6,8 @@ import copy
 import warnings
 import json
 
+__version__ = "0.1.0"
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -21,11 +23,15 @@ def parse_args():
     parser.add_argument("--use_bids_uris", action="store_true",
                         help="use BIDS URIs for setting the IntendedFor field for single bad reference and spin echo "
                              "images. This is now required by BIDS, but I am not making it the default because fMRIprep"
-                             " does not support it yet.")
+                             " does not support it yet. "
+                             "(https://bids-specification.readthedocs.io/en/stable/04-modality-specific-files/01-magnetic-resonance-imaging-data.html#using-intendedfor-metadata)")
+    parser.add_argument("--name", type=str, default="auto",
+                        help="name of the dataset. (default: 'auto'). 'auto' will try to determine if the dataset is "
+                             "the HCP Aging or HCP Development dataset based on the contents of the nda_dir.")
     return parser.parse_args()
 
 
-def generate_output_filename(subject_id, modality, folder, **kwargs):
+def generate_output_filename(subject_id, modality, folder, extension=".nii.gz", **kwargs):
     args = ["sub-{}".format(subject_id)]
     # Makes sure the arguments are added in the correct order
     for key in ("ses", "task", "acq", "ce", "rec", "dir", "run", "recording", "echo", "part"):
@@ -33,7 +39,12 @@ def generate_output_filename(subject_id, modality, folder, **kwargs):
             value = kwargs[key]
             args.append("{}-{}".format(key, value))
     args.append(modality)
-    return os.path.join(folder, "_".join(args) + ".nii.gz")
+    return os.path.join(folder, "_".join(args) + extension)
+
+
+def generate_full_output_filename(bids_dir, subject_id, modality, folder, extension=".nii.gz", **kwargs):
+    return os.path.join(bids_dir, "sub-{}".format(subject_id),
+                        generate_output_filename(subject_id, modality, folder, extension=extension, **kwargs))
 
 
 def generate_intended_for(subject_id, modality, folder, bids_uris=False, **kwargs):
@@ -56,11 +67,39 @@ def add_intended_for_to_json(json_file, intended_for):
         json.dump(json_dict, f, indent=4, sort_keys=True)
 
 
+def write_bids_dataset_metadata_files(bids_dir, name):
+    # write dataset_description.json
+    dataset_description = {"Name": name, "BIDSVersion": "1.8.0", "DatasetType": "raw",
+                           "GeneratedBy": [{"Name": "HCPLifespanBIDS", "Version": __version__,
+                                           "CodeURL": "https://github.com/ellisdg/HCPLifespan2BIDS"}]}
+    with open(os.path.join(bids_dir, "dataset_description.json"), "w") as f:
+        json.dump(dataset_description, f, indent=4, sort_keys=False)
+
+    # write README
+    with open(os.path.join(bids_dir, "README"), "w") as f:
+        f.write("This is a BIDS dataset generated from the HCP Lifespan datasets using HCPLifespan2BIDS.\n")
+
+    # write bidsignore
+    with open(os.path.join(bids_dir, ".bidsignore"), "w") as f:
+        f.write("*.mp4\n")
+
+
+def get_dataset_name(name, subject_id):
+    if name == "auto":
+        if "HCD" in subject_id:
+            name = "HCPDevelopment"
+        elif "HCA" in subject_id:
+            name = "HCPAging"
+        else:
+            warnings.warn("Could not detect name of HCP project from subject_id: {}.\n"
+                          "Setting dataset name to 'HCPUnknown'.".format(subject_id))
+            name = "HCPUnknown"
+    return name
+
+
 def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="hardlink", overwrite=False, dryrun=False,
                  intended_for=None, **kwargs):
-    output_file = os.path.join(bids_dir,
-                               "sub-{}".format(subject_id),
-                               generate_output_filename(subject_id, modality, folder, **kwargs))
+    output_file = generate_full_output_filename(bids_dir, subject_id, modality, folder, **kwargs)
     in_files = [image_file]
     out_files = [output_file]
     json_sidecar = image_file.replace(".nii.gz", ".json")
@@ -82,8 +121,40 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
             if os.path.exists(bvec_file):
                 in_files.append(bvec_file)
                 out_files.append(output_file.replace(".nii.gz", ".bvec"))
+    elif modality == "bold":
+        # add physio, eye tracking, and events files
+        # check for physio files
+        physio_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.csv"))
+        if len(physio_files) == 1:
+            in_files.extend(physio_files[0])
+            out_files.extend(output_file.replace("_bold.nii.gz", "_physio.csv"))
+        elif len(physio_files) > 1:
+            warnings.warn("Found multiple physio files for {}. Skipping.".format(image_file))
 
-    # TODO: add physio, eye tracking, and other files
+        # check for eye tracking file
+        eye_tracking_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "*.mp4"))
+        if len(eye_tracking_files) == 1:
+            in_files.extend(eye_tracking_files[0])
+            out_files.extend(generate_full_output_filename(bids_dir, subject_id, modality="physio", folder=folder,
+                                                           recording="eyetracking", extension=".mp4", **kwargs))
+        elif len(eye_tracking_files) > 1:
+            warnings.warn("Found multiple eye tracking files for {}. Skipping.".format(image_file))
+
+        # check for events files
+        events_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "EVs", "*txt"))
+        # combine all events files into one tsv file
+        tsv_output_file = generate_full_output_filename(bids_dir, subject_id, modality="events", folder=folder,
+                                                        extension=".tsv", **kwargs)
+        tsv_header = ["onset", "duration", "amplitude", "trial_type"]
+        if len(events_files) > 0 and not dryrun and (overwrite or not os.path.exists(tsv_output_file)):
+            print("Combining events files into {}".format(tsv_output_file))
+            with open(tsv_output_file, "w") as f:
+                f.write("\t".join(tsv_header) + "\n")
+                for events_file in events_files:
+                    trial_type = os.path.basename(events_file).replace(".txt", "")
+                    with open(events_file, "r") as f2:
+                        for line in f2.readlines():
+                            f.write("\t".join([line.strip(), trial_type]) + "\n")
 
     if os.path.exists(output_file) and not overwrite:
         print("File already exists: {}".format(output_file))
@@ -234,6 +305,9 @@ def main():
             move_to_bids(image_file=image_file, bids_dir=args.output_dir, subject_id=subject_id, folder=folder,
                          modality=bids_modality, method=args.method, overwrite=args.overwrite, dryrun=args.dry_run,
                          intended_for=intended_for, **kwargs)
+
+    first_subject_id = os.path.basename(subject_folders[0]).split("_")[0]
+    write_bids_dataset_metadata_files(args.output_dir, name=get_dataset_name(args.name, first_subject_id))
 
 
 if __name__ == "__main__":
