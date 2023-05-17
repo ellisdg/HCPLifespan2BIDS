@@ -2,9 +2,9 @@ import argparse
 import os
 import glob
 import shutil
-import copy
 import warnings
 import json
+import re
 
 __version__ = "0.1.0"
 
@@ -111,31 +111,34 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
         warnings.warn("No JSON sidecar found for {}".format(image_file))
 
     if modality == "dwi":
-        for in_file in copy.copy(in_files):
-            # check for bval and bvec files
-            bval_file = in_file.replace(".nii.gz", ".bval")
-            bvec_file = in_file.replace(".nii.gz", ".bvec")
-            if os.path.exists(bval_file):
-                in_files.append(bval_file)
-                out_files.append(output_file.replace(".nii.gz", ".bval"))
-            if os.path.exists(bvec_file):
-                in_files.append(bvec_file)
-                out_files.append(output_file.replace(".nii.gz", ".bvec"))
+        # check for bval and bvec files
+        bval_file = image_file.replace(".nii.gz", ".bval")
+        bvec_file = image_file.replace(".nii.gz", ".bvec")
+        if os.path.exists(bval_file):
+            in_files.append(bval_file)
+            out_files.append(output_file.replace(".nii.gz", ".bval"))
+        else:
+            warnings.warn("No bval file found for {}".format(image_file))
+        if os.path.exists(bvec_file):
+            in_files.append(bvec_file)
+            out_files.append(output_file.replace(".nii.gz", ".bvec"))
+        else:
+            warnings.warn("No bvec file found for {}".format(image_file))
     elif modality == "bold":
         # add physio, eye tracking, and events files
         # check for physio files
         physio_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.csv"))
         if len(physio_files) == 1:
-            in_files.extend(physio_files[0])
-            out_files.extend(output_file.replace("_bold.nii.gz", "_physio.csv"))
+            in_files.append(physio_files[0])
+            out_files.append(output_file.replace("_bold.nii.gz", "_physio.csv"))
         elif len(physio_files) > 1:
             warnings.warn("Found multiple physio files for {}. Skipping.".format(image_file))
 
         # check for eye tracking file
         eye_tracking_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "*.mp4"))
         if len(eye_tracking_files) == 1:
-            in_files.extend(eye_tracking_files[0])
-            out_files.extend(generate_full_output_filename(bids_dir, subject_id, modality="physio", folder=folder,
+            in_files.append(eye_tracking_files[0])
+            out_files.append(generate_full_output_filename(bids_dir, subject_id, modality="physio", folder=folder,
                                                            recording="eyetracking", extension=".mp4", **kwargs))
         elif len(eye_tracking_files) > 1:
             warnings.warn("Found multiple eye tracking files for {}. Skipping.".format(image_file))
@@ -145,16 +148,21 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
         # combine all events files into one tsv file
         tsv_output_file = generate_full_output_filename(bids_dir, subject_id, modality="events", folder=folder,
                                                         extension=".tsv", **kwargs)
-        tsv_header = ["onset", "duration", "amplitude", "trial_type"]
+        tsv_header = ["onset", "duration", "value", "trial_type"]
         if len(events_files) > 0 and not dryrun and (overwrite or not os.path.exists(tsv_output_file)):
             print("Combining events files into {}".format(tsv_output_file))
             with open(tsv_output_file, "w") as f:
                 f.write("\t".join(tsv_header) + "\n")
+                rows = list()
                 for events_file in events_files:
                     trial_type = os.path.basename(events_file).replace(".txt", "")
                     with open(events_file, "r") as f2:
                         for line in f2.readlines():
-                            f.write("\t".join([line.strip(), trial_type]) + "\n")
+                            rows.append(line.strip().split(" ") + [trial_type])
+                # sort the rows by onset
+                rows.sort(key=lambda x: float(x[0]))
+                for row in rows:
+                    f.write("\t".join(row) + "\n")
 
     if os.path.exists(output_file) and not overwrite:
         print("File already exists: {}".format(output_file))
@@ -163,9 +171,10 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
         print("Overwriting file: {}".format(output_file))
         if not dryrun:
             for file in out_files:
-                os.remove(file)
+                if os.path.exists(file):
+                    os.remove(file)
 
-    print_text = "{} --> {}".format(image_file, output_file)
+    print_text = "\n".join(["{} --> {}".format(in_file, out_file) for in_file, out_file in zip(in_files, out_files)])
 
     if not dryrun:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -195,6 +204,61 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
 
     if intended_for is not None and not dryrun:
         add_intended_for_to_json(output_json_sidecar, intended_for)
+
+    if "task-" in os.path.basename(output_file) and not dryrun:
+        # add task name to json sidecar
+        # get task name from filename using regular expression
+        task_name = re.search("task-([a-zA-Z0-9]+)_", os.path.basename(output_file)).group(1)
+        add_task_name_to_json(output_json_sidecar, task_name)
+
+
+def add_task_name_to_json(json_file, task_name):
+    print("Adding task name {} to {}".format(task_name, json_file))
+    with open(json_file, "r") as f:
+        data = json.load(f)
+    data["TaskName"] = task_name
+    with open(json_file, "w") as f:
+        json.dump(data, f, indent=4)
+
+
+def get_acquisition_time(image_file):
+    json_sidecar = image_file.replace(".nii.gz", ".json")
+    if not os.path.exists(json_sidecar):
+        raise ValueError("No json sidecar found for {}".format(image_file))
+    with open(json_sidecar, "r") as f:
+        data = json.load(f)
+    return data["AcquisitionTime"]
+
+
+def fix_epi_runs(bids_dir):
+    # The epi runs must be renamed to match the BIDS standard
+    # this script will assign each epi run a number according to the acquisition time of the volume
+    # the first run will be 1, the second run will be 2, etc.
+    fmap_folders = glob.glob(os.path.join(bids_dir, "sub-*", "fmap"))
+    for fmap_folder in fmap_folders:
+        epi_runs = glob.glob(os.path.join(fmap_folder, "*epi.nii.gz"))
+        new_runs = list()
+        if len(epi_runs) == 0:
+            continue
+        elif len(epi_runs) == 1:
+            # use regular expression to remove the run value from the filename
+            new_file_name = re.sub(r"_run-\w+_", "_", epi_runs[0])
+            new_runs.append(new_file_name)
+        else:
+            # sort the epi runs by acquisition time
+            epi_runs.sort(key=lambda x: get_acquisition_time(x))
+            for i, epi_run in enumerate(epi_runs):
+                index = len(glob.glob(re.sub(r"_run-\w+_", "_run-*_", epi_run))) + 1
+                # use regular expression to replace the run value from the filename
+                new_file_name = re.sub(r"_run-\w+_", "_run-{}_".format(index), epi_run)
+                new_runs.append(new_file_name)
+        for old_run, new_run in zip(epi_runs, new_runs):
+            print("Renaming {} to {}".format(old_run, new_run))
+            shutil.move(old_run, new_run)
+            old_json = old_run.replace(".nii.gz", ".json")
+            new_json = new_run.replace(".nii.gz", ".json")
+            print("Renaming {} to {}".format(old_json, new_json))
+            shutil.move(old_json, new_json)
 
 
 def main():
@@ -250,7 +314,7 @@ def main():
                         intended_for_kwargs["task"] = "rest"
                 elif "PCASL" in basename:
                     intended_for_kwargs["modality"] = "asl"
-                    intended_for_kwargs["folder"] = "asl"
+                    intended_for_kwargs["folder"] = "perf"
                 elif "T1w" in basename:
                     intended_for_kwargs["modality"] = "T1w"
                     intended_for_kwargs["folder"] = "anat"
@@ -308,6 +372,8 @@ def main():
 
     first_subject_id = os.path.basename(subject_folders[0]).split("_")[0]
     write_bids_dataset_metadata_files(args.output_dir, name=get_dataset_name(args.name, first_subject_id))
+    if not args.dry_run:
+        fix_epi_runs(args.output_dir)
 
 
 if __name__ == "__main__":
