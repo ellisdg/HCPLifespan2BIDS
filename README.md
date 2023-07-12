@@ -1,6 +1,6 @@
-# HCPLifespan2BIDS
+# [HCPLifespan2BIDS](https://github.com/ellisdg/HCPLifespan2BIDS)
 
-Converts the unprocessed imaging data for the HCP Aging and Development studies to BIDS format.
+Converts the unprocessed imaging data for the HCP Aging and Development (i.e. Lifespan) datasets to BIDS format.
 
 ## Usage
 
@@ -18,4 +18,4 @@ You can run `python main.py --help` to see all options. The most important ones 
 * --use_bids_uris: If specified, will use BIDS URIs instead of BIDS filenames.
 
 ## Appendix: Downloading the data
-I found it easiest to use the ndatools `downloadcmd` to download the data.
+I found it easiest to use the ndatools `downloadcmd` commandline tool to download the data. You can download `downloadcmd` using `pip install nda-tools`.
