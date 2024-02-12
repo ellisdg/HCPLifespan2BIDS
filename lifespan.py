@@ -119,7 +119,7 @@ def get_dataset_name(name, subject_id):
 
 
 def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="hardlink", overwrite=False, dryrun=False,
-                 intended_for=None, **kwargs):
+                 intended_for=None, exists_ok=True, **kwargs):
     output_file = generate_full_output_filename(bids_dir, subject_id, modality, folder, **kwargs)
     in_files = [image_file]
     out_files = [output_file]
@@ -185,14 +185,18 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
                 for row in rows:
                     f.write("\t".join(row) + "\n")
 
-    if os.path.exists(output_file) and not overwrite:
-        raise FileExistsError("File already exists: {}".format(output_file))
-    elif os.path.exists(output_file) and overwrite:
-        print("Overwriting file: {}".format(output_file))
-        if not dryrun:
-            for file in out_files:
-                if os.path.exists(file):
-                    os.remove(file)
+    if os.path.exists(output_file):
+        if exists_ok and not overwrite:
+            warnings.warn("File already exists: {}".format(output_file))
+            return
+        elif not overwrite:
+            raise FileExistsError("File already exists: {}".format(output_file))
+        elif overwrite:
+            print("Overwriting file: {}".format(output_file))
+            if not dryrun:
+                for file in out_files:
+                    if os.path.exists(file):
+                        os.remove(file)
 
     print_text = "\n".join(["{} --> {}".format(in_file, out_file) for in_file, out_file in zip(in_files, out_files)])
 
@@ -234,8 +238,11 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
 
 def add_task_name_to_json(json_file, task_name):
     print("Adding task name {} to {}".format(task_name, json_file))
-    with open(json_file, "r") as f:
-        data = json.load(f)
+    if os.path.exists(json_file):
+        with open(json_file, "r") as f:
+            data = json.load(f)
+    else:
+        data = dict()
     data["TaskName"] = task_name
     with open(json_file, "w") as f:
         json.dump(data, f, indent=4)
@@ -301,10 +308,43 @@ def find_gradient_warped_file(image_file):
     return gradunwarp_file
 
 
+def spin_echo_intended_for(subject_id, use_bids_uris, basename, image_file):
+    # figure out the IntendedFor filename
+    intended_for_kwargs = {"subject_id": subject_id, "bids_uris": use_bids_uris}
+    set_intended_for = True
+    if "fMRI" in basename:
+        intended_for_kwargs["modality"] = "bold"
+        intended_for_kwargs["folder"] = "func"
+        intended_for_kwargs["task"] = basename.split("_")[1].lower()
+        intended_for_kwargs["dir"] = basename.split("_")[2]
+        if "rest" in intended_for_kwargs["task"]:
+            intended_for_kwargs["run"] = intended_for_kwargs["task"].split("rest")[1]
+            intended_for_kwargs["task"] = "rest"
+    elif "PCASL" in basename:
+        intended_for_kwargs["modality"] = "asl"
+        intended_for_kwargs["folder"] = "perf"
+        intended_for_kwargs["dir"] = "PA"
+    elif "T1w" in basename:
+        intended_for_kwargs["modality"] = "T1w"
+        intended_for_kwargs["folder"] = "anat"
+    elif "T2w" in basename:
+        intended_for_kwargs["modality"] = "T2w"
+        intended_for_kwargs["folder"] = "anat"
+    else:
+        warnings.warn("Unknown IntendedFor modality: {}. "
+                      "Not setting IntendedFor field for {}".format(basename, image_file))
+        set_intended_for = False
+    if set_intended_for:
+        return generate_intended_for(**intended_for_kwargs)
+    else:
+        return None
+
+
 def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", method="hardlink", overwrite=False,
-        dry_run=False, name="auto", grad_unwarp=False):
+        dry_run=False, name="auto", grad_unwarp=False, skip_bias=True, t1w_use_derived=False, t2w_use_derived=False,
+        skip=()):
     print("Searching for subjects with wildcard: {}".format(wildcard))
-    subject_folders = glob.glob(wildcard)
+    subject_folders = sorted(glob.glob(wildcard))
     print("Found {} subjects.".format(len(subject_folders)))
     for subject_folder in subject_folders:
         print("Processing subject: {}".format(subject_folder))
@@ -315,6 +355,12 @@ def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", met
         for image_file in image_files:
 
             if os.path.dirname(image_file).endswith("OTHER_FILES"):
+                continue
+
+            if skip_bias and "BIAS" in image_file:
+                continue
+
+            if any([skip_str in image_file for skip_str in skip]):
                 continue
 
             print("Processing image file: {}".format(image_file))
@@ -335,40 +381,22 @@ def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", met
                 # if match:
                 #     run = run + match.group(1)
                 kwargs["run"] = run
+                intended_for = spin_echo_intended_for(subject_id, use_bids_uris, basename, image_file)
 
-                # figure out the IntendedFor filename
-                intended_for_kwargs = {"subject_id": subject_id, "bids_uris": use_bids_uris}
-                set_intended_for = True
-                if "fMRI" in basename:
-                    intended_for_kwargs["modality"] = "bold"
-                    intended_for_kwargs["folder"] = "func"
-                    intended_for_kwargs["task"] = basename.split("_")[1].lower()
-                    intended_for_kwargs["dir"] = basename.split("_")[2]
-                    if "rest" in intended_for_kwargs["task"]:
-                        intended_for_kwargs["run"] = intended_for_kwargs["task"].split("rest")[1]
-                        intended_for_kwargs["task"] = "rest"
-                elif "PCASL" in basename:
-                    intended_for_kwargs["modality"] = "asl"
-                    intended_for_kwargs["folder"] = "perf"
-                    intended_for_kwargs["dir"] = "PA"
-                elif "T1w" in basename:
-                    intended_for_kwargs["modality"] = "T1w"
-                    intended_for_kwargs["folder"] = "anat"
-                elif "T2w" in basename:
-                    intended_for_kwargs["modality"] = "T2w"
-                    intended_for_kwargs["folder"] = "anat"
-                else:
-                    warnings.warn("Unknown IntendedFor modality: {}. "
-                                  "Not setting IntendedFor field for {}".format(basename, image_file))
-                    set_intended_for = False
-                if set_intended_for:
-                    intended_for = generate_intended_for(**intended_for_kwargs)
             elif "T1w" in image_file:
                 folder = "anat"
                 bids_modality = "T1w"
+                if t1w_use_derived:
+                    image_file = os.path.join(image_file.split("unprocessed")[0], "T1w", "T1w_acpc_dc.nii.gz")
+                    if not os.path.exists(image_file):
+                        raise ValueError(f"Derived T1w file not found: {image_file}")
             elif "T2w" in image_file:
                 folder = "anat"
                 bids_modality = "T2w"
+                if t2w_use_derived:
+                    image_file = os.path.join(image_file.split("unprocessed")[0], "T1w", "T2w_acpc_dc.nii.gz")
+                    if not os.path.exists(image_file):
+                        raise ValueError(f"Derived T2w file not found: {image_file}")
             elif "fMRI" in image_file:
                 if grad_unwarp:
                     image_file = find_gradient_warped_file(image_file)
