@@ -24,6 +24,37 @@ def parse_args():
     return parser.parse_args()
 
 
+def convert_ev_dir(ev_dir, out_file):
+    """
+    HCP has the events in a directory called "EVs". This function converts the events to a BIDS compatible format.
+    :param ev_dir: "EVs" directory in the HCP dataset.
+    :param out_file: events file to be created with .tsv extension.
+    :return: Location of the output file.
+    """
+
+    from pandas.errors import EmptyDataError
+    import pandas as pd
+    # TODO: figure out how to encode errors
+    dfs = list()
+    for ev in os.listdir(ev_dir):
+
+        if ev in ("Sync.txt",) or ".txt" not in ev:
+            continue
+        try:
+            df_ev = pd.read_csv(os.path.join(ev_dir, ev), delimiter="\t", header=None)
+        except EmptyDataError:
+            continue
+        df_ev.columns = ["onset", "duration", "strength"]
+        df_ev["trial_type"] = ev.split(".txt")[0]
+        dfs.append(df_ev)
+
+    df = pd.concat(dfs).sort_values("onset").set_index("onset")
+    assert not os.path.exists(out_file)
+    df.to_csv(out_file, sep="\t")
+
+    return out_file
+
+
 def main():
     args = parse_args()
     wildcard = os.path.join(args.hcp_dir, "*")
