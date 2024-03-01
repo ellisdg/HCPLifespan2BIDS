@@ -22,3 +22,16 @@ I was able to sucessfully run fMRIPrep on the HCP-Development data after turning
 
 ## Downloading the data
 I found it easiest to use the ndatools `downloadcmd` commandline tool to download the data. You can download `downloadcmd` using `pip install nda-tools`.
+
+
+## Useful Links
+* [suyashdb/hcp2bids](https://github.com/suyashdb/hcp2bids)
+* [Phase encoding direction discussion](https://github.com/suyashdb/hcp2bids/issues/16)
+* [Russ Poldrack asking about HCP BIDS data on Twitter/X](https://twitter.com/russpoldrack/status/1300877693957726208?lang=en)
+* [Neurostars question asking about JSON sidecar files for HCPYA](https://neurostars.org/t/fmriprep-hcp-data-fieldmap-correction-looks-inverted/25867).
+  (PhaseEncodingDirection should be reversed from that provided by the asker.)
+* [Partial conversion script for converting the HCPYA data to BIDS](https://github.com/datalad-datasets/hcp-functional-connectivity/pull/1/commits/e02970aab710a9c006c12be9cf5b442cc06d1f16)
+* [Neurostars question asking for HCP BIDS data](https://neurostars.org/t/unprocessed-hcp-data-in-bids-format-for-fmriprep/24767/4)
+* [Slice timing for HCPYA](https://wiki.humanconnectome.org/display/PublicData/HCP+fMRI+slice-timing+acquisition+parameters)
+* [Diffusion readout time](https://neurostars.org/t/what-is-the-totalreadouttime-of-hcp-dwi-data/19622)
+* 
