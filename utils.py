@@ -112,13 +112,12 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
         # use predefined json sidecar files from this project
         # the sidcar files can be found under the "sidecars" directory
         json_sidecar = match_json_sidecar(output_file)
-        print("!!!!!", output_file, json_sidecar)
     else:
         json_sidecar = image_file.replace(".nii.gz", ".json")
 
     output_json_sidecar = output_file.replace(".nii.gz", ".json")
 
-    if os.path.exists(json_sidecar):
+    if json_sidecar is not None and os.path.exists(json_sidecar):
         in_files.append(json_sidecar)
         out_files.append(output_json_sidecar)
     else:
@@ -248,8 +247,6 @@ def match_json_sidecar(image_file):
 
     # get the modality
     modality = image_file.split("_")[-1].split(".")[0]
-
-    print("Matching sidecar for task: {}, acq_dir: {}, modality: {}".format(task_name, acq_dir, modality))
 
     # find a matching sidecar file
     sidecar_basename = f"{modality}.json"
