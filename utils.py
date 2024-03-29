@@ -103,17 +103,25 @@ def add_intended_for_to_json(json_file, intended_for):
 
 
 def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="hardlink", overwrite=False, dryrun=False,
-                 intended_for=None, exists_ok=True, **kwargs):
+                 intended_for=None, exists_ok=True, use_precompiled_sidecars=False, **kwargs):
     output_file = generate_full_output_filename(bids_dir, subject_id, modality, folder, **kwargs)
     in_files = [image_file]
     out_files = [output_file]
-    json_sidecar = image_file.replace(".nii.gz", ".json")
+
+    if use_precompiled_sidecars:
+        # use predefined json sidecar files from this project
+        # the sidcar files can be found under the "sidecars" directory
+        json_sidecar = match_json_sidecar(image_file)
+    else:
+        json_sidecar = image_file.replace(".nii.gz", ".json")
+
     output_json_sidecar = output_file.replace(".nii.gz", ".json")
+
     if os.path.exists(json_sidecar):
         in_files.append(json_sidecar)
         out_files.append(output_json_sidecar)
     else:
-        warnings.warn("No JSON sidecar found for {}".format(image_file))
+        warnings.warn("JSON sidecar file does not exist: {}".format(json_sidecar))
 
     if modality == "dwi":
         # check for bval and bvec files
@@ -130,44 +138,8 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
         else:
             warnings.warn("No bvec file found for {}".format(image_file))
     elif modality == "bold":
-        # add physio, eye tracking, and events files
-        # check for physio files
-        physio_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.csv"))
-        if len(physio_files) == 1:
-            in_files.append(physio_files[0])
-            out_files.append(output_file.replace("_bold.nii.gz", "_physio.csv"))
-        elif len(physio_files) > 1:
-            warnings.warn("Found multiple physio files for {}. Skipping.".format(image_file))
-
-        # check for eye tracking file
-        eye_tracking_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "*.mp4"))
-        if len(eye_tracking_files) == 1:
-            in_files.append(eye_tracking_files[0])
-            out_files.append(generate_full_output_filename(bids_dir, subject_id, modality="physio", folder=folder,
-                                                           recording="eyetracking", extension=".mp4", **kwargs))
-        elif len(eye_tracking_files) > 1:
-            warnings.warn("Found multiple eye tracking files for {}. Skipping.".format(image_file))
-
-        # check for events files
-        events_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "EVs", "*txt"))
-        # combine all events files into one tsv file
-        tsv_output_file = generate_full_output_filename(bids_dir, subject_id, modality="events", folder=folder,
-                                                        extension=".tsv", **kwargs)
-        tsv_header = ["onset", "duration", "value", "trial_type"]
-        if len(events_files) > 0 and not dryrun and (overwrite or not os.path.exists(tsv_output_file)):
-            print("Combining events files into {}".format(tsv_output_file))
-            with open(tsv_output_file, "w") as f:
-                f.write("\t".join(tsv_header) + "\n")
-                rows = list()
-                for events_file in events_files:
-                    trial_type = os.path.basename(events_file).replace(".txt", "")
-                    with open(events_file, "r") as f2:
-                        for line in f2.readlines():
-                            rows.append(line.strip().split(" ") + [trial_type])
-                # sort the rows by onset
-                rows.sort(key=lambda x: float(x[0]))
-                for row in rows:
-                    f.write("\t".join(row) + "\n")
+        in_files, out_files = prep_bold_to_bids(image_file, bids_dir, subject_id, folder, in_files, out_files,
+                                                output_file, overwrite=overwrite, dryrun=dryrun, **kwargs)
 
     if os.path.exists(output_file):
         if exists_ok and not overwrite:
@@ -218,6 +190,71 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
         # get task name from filename using regular expression
         task_name = re.search("task-([a-zA-Z0-9]+)_", os.path.basename(output_file)).group(1)
         add_task_name_to_json(output_json_sidecar, task_name)
+
+
+def prep_bold_to_bids(image_file, bids_dir, subject_id, folder, in_files, out_files, output_file,
+                      overwrite=False, dryrun=False, **kwargs):
+    # add physio, eye tracking, and events files
+    # check for physio files
+    physio_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.csv"))
+    if len(physio_files) == 1:
+        in_files.append(physio_files[0])
+        out_files.append(output_file.replace("_bold.nii.gz", "_physio.csv"))
+    elif len(physio_files) > 1:
+        warnings.warn("Found multiple physio files for {}. Skipping.".format(image_file))
+
+    # check for eye tracking file
+    eye_tracking_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "*.mp4"))
+    if len(eye_tracking_files) == 1:
+        in_files.append(eye_tracking_files[0])
+        out_files.append(generate_full_output_filename(bids_dir, subject_id, modality="physio", folder=folder,
+                                                       recording="eyetracking", extension=".mp4", **kwargs))
+    elif len(eye_tracking_files) > 1:
+        warnings.warn("Found multiple eye tracking files for {}. Skipping.".format(image_file))
+
+    # check for events files
+    events_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "EVs", "*txt"))
+    # combine all events files into one tsv file
+    tsv_output_file = generate_full_output_filename(bids_dir, subject_id, modality="events", folder=folder,
+                                                    extension=".tsv", **kwargs)
+    tsv_header = ["onset", "duration", "value", "trial_type"]
+    if len(events_files) > 0 and not dryrun and (overwrite or not os.path.exists(tsv_output_file)):
+        print("Combining events files into {}".format(tsv_output_file))
+        with open(tsv_output_file, "w") as f:
+            f.write("\t".join(tsv_header) + "\n")
+            rows = list()
+            for events_file in events_files:
+                trial_type = os.path.basename(events_file).replace(".txt", "")
+                with open(events_file, "r") as f2:
+                    for line in f2.readlines():
+                        rows.append(line.strip().split(" ") + [trial_type])
+            # sort the rows by onset
+            rows.sort(key=lambda x: float(x[0]))
+            for row in rows:
+                f.write("\t".join(row) + "\n")
+    return in_files, out_files
+
+
+def match_json_sidecar(image_file):
+    # get the task name from the filename
+    task_name = re.search("task-([a-zA-Z0-9]+)_", image_file).group(1)
+
+    # get the acquisition direction
+    acq_dir = re.search("dir-([a-zA-Z0-9]+)_", image_file).group(1)
+
+    # get the modality
+    modality = image_file.split("_")[-1].split(".")[0]
+
+    # find a matching sidecar file
+    sidecar_basename = f"{modality}.json"
+    if acq_dir is not None:
+        sidecar_basename = f"{acq_dir}_{sidecar_basename}"
+    if task_name is not None:
+        sidecar_basename = f"{task_name}_{sidecar_basename}"
+    sidecar_filename = os.path.abspath(os.path.join(os.path.dirname(__file__), "sidecars", sidecar_basename))
+
+    if os.path.exists(sidecar_filename):
+        return sidecar_filename
 
 
 def add_task_name_to_json(json_file, task_name):
@@ -271,3 +308,34 @@ def spin_echo_intended_for(subject_id, use_bids_uris, basename, image_file):
         return generate_intended_for(**intended_for_kwargs)
     else:
         return None
+
+
+def convert_ev_dir(ev_dir, out_file):
+    """
+    HCP has the events in a directory called "EVs". This function converts the events to a BIDS compatible format.
+    :param ev_dir: "EVs" directory in the HCP dataset.
+    :param out_file: events file to be created with .tsv extension.
+    :return: Location of the output file.
+    """
+
+    from pandas.errors import EmptyDataError
+    import pandas as pd
+    # TODO: figure out how to encode errors
+    dfs = list()
+    for ev in os.listdir(ev_dir):
+
+        if ev in ("Sync.txt",) or ".txt" not in ev:
+            continue
+        try:
+            df_ev = pd.read_csv(os.path.join(ev_dir, ev), delimiter="\t", header=None)
+        except EmptyDataError:
+            continue
+        df_ev.columns = ["onset", "duration", "strength"]
+        df_ev["trial_type"] = ev.split(".txt")[0]
+        dfs.append(df_ev)
+
+    df = pd.concat(dfs).sort_values("onset").set_index("onset")
+    assert not os.path.exists(out_file)
+    df.to_csv(out_file, sep="\t")
+
+    return out_file
