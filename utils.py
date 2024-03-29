@@ -238,7 +238,10 @@ def prep_bold_to_bids(image_file, bids_dir, subject_id, folder, in_files, out_fi
 
 def match_json_sidecar(image_file):
     # get the task name from the filename
-    task_name = re.search("task-([a-zA-Z0-9]+)_", image_file).group(1)
+    try:
+        task_name = re.search("task-([a-zA-Z0-9]+)_", image_file).group(1)
+    except AttributeError:
+        task_name = None
 
     # get the acquisition direction
     acq_dir = re.search("dir-([a-zA-Z0-9]+)_", image_file).group(1)
