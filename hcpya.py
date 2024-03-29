@@ -30,7 +30,8 @@ def main():
     run(wildcard=wildcard, use_bids_uris=args.use_bids_uris, pe_dirs=("LR", "RL"),  output_dir=args.output_dir,
         method=args.method, overwrite=args.overwrite, dry_run=args.dry_run, name="HCPYoungAdult",
         grad_unwarp=args.grad_unwarp, t1w_use_derived=True, t2w_use_derived=True,
-        skip=("AFI.nii.gz", "FieldMap_Magnitude.nii.gz", "FieldMap_Phase.nii.gz", "7T/", "3T/Diffusion/", "3T_.nii.gz"))
+        skip=("AFI.nii.gz", "FieldMap_Magnitude.nii.gz", "FieldMap_Phase.nii.gz", "7T/", "3T/Diffusion/", "3T_.nii.gz"),
+        use_precompiled_sidecars=True)
 
 
 if __name__ == "__main__":
