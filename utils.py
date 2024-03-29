@@ -251,9 +251,9 @@ def match_json_sidecar(image_file):
     # find a matching sidecar file
     sidecar_basename = f"{modality}.json"
     if acq_dir is not None:
-        sidecar_basename = f"{acq_dir}_{sidecar_basename}"
+        sidecar_basename = f"dir-{acq_dir}_{sidecar_basename}"
     if task_name is not None:
-        sidecar_basename = f"{task_name}_{sidecar_basename}"
+        sidecar_basename = f"task-{task_name}_{sidecar_basename}"
     sidecar_filename = os.path.abspath(os.path.join(os.path.dirname(__file__), "sidecars", sidecar_basename))
 
     if os.path.exists(sidecar_filename):
