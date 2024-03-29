@@ -246,6 +246,8 @@ def match_json_sidecar(image_file):
     # get the modality
     modality = image_file.split("_")[-1].split(".")[0]
 
+    print("Matching sidecar for task: {}, acq_dir: {}, modality: {}".format(task_name, acq_dir, modality))
+
     # find a matching sidecar file
     sidecar_basename = f"{modality}.json"
     if acq_dir is not None:
