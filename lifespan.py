@@ -93,7 +93,7 @@ def find_gradient_warped_file(image_file):
 
 def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", method="hardlink", overwrite=False,
         dry_run=False, name="auto", grad_unwarp=False, skip_bias=True, t1w_use_derived=False, t2w_use_derived=False,
-        skip=(), use_precompiled_sidecars=False):
+        skip=(), use_precompiled_sidecars=False, sort_by_run_name=False):
     print("Searching for subjects with wildcard: {}".format(wildcard))
     subject_folders = sorted(glob.glob(wildcard))
     print("Found {} subjects.".format(len(subject_folders)))
@@ -190,7 +190,7 @@ def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", met
     first_subject_id = os.path.basename(subject_folders[0]).split("_")[0]
     write_bids_dataset_metadata_files(output_dir, name=get_dataset_name(name, first_subject_id))
     if not dry_run:
-        fix_epi_runs(output_dir, pe_dirs=pe_dirs)
+        fix_epi_runs(output_dir, pe_dirs=pe_dirs, sort_by_run_name=sort_by_run_name)
 
 
 def main():

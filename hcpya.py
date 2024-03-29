@@ -31,7 +31,7 @@ def main():
         method=args.method, overwrite=args.overwrite, dry_run=args.dry_run, name="HCPYoungAdult",
         grad_unwarp=args.grad_unwarp, t1w_use_derived=True, t2w_use_derived=True,
         skip=("AFI.nii.gz", "FieldMap_Magnitude.nii.gz", "FieldMap_Phase.nii.gz", "7T/", "3T/Diffusion/", "3T_.nii.gz"),
-        use_precompiled_sidecars=True)
+        use_precompiled_sidecars=True, sort_by_run_name=True)
 
 
 if __name__ == "__main__":
