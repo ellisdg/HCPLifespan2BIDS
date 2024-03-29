@@ -243,7 +243,10 @@ def match_json_sidecar(image_file):
         task_name = None
 
     # get the acquisition direction
-    acq_dir = re.search("dir-([a-zA-Z0-9]+)_", image_file).group(1)
+    try:
+        acq_dir = re.search("dir-([a-zA-Z0-9]+)_", image_file).group(1)
+    except AttributeError:
+        acq_dir = None
 
     # get the modality
     modality = image_file.split("_")[-1].split(".")[0]
