@@ -16,7 +16,8 @@ def create_parser():
     parser.add_argument("--dry_run", action="store_true", help="do not write files, just print what would be done.")
     parser.add_argument("--overwrite", action="store_true", help="overwrite existing files.")
     parser.add_argument("--method", type=str, default="hardlink", choices=["hardlink", "symlink", "copy", "move"],
-                        help="method to use for linking files.")
+                        help="method to use for linking files. (default: hardlink). "
+                             "JSON sidecars will always be copied.")
     parser.add_argument("--use_bids_uris", action="store_true",
                         help="use BIDS URIs for setting the IntendedFor field for single bad reference and spin echo "
                              "images. This is now required by BIDS, but I am not making it the default because fMRIprep"
@@ -133,7 +134,6 @@ def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", met
                 #     run = run + match.group(1)
                 kwargs["run"] = run
                 intended_for = spin_echo_intended_for(subject_id, use_bids_uris, basename, image_file)
-                print(f"{image_file} --> {subject_id} --> IntendedFor: {intended_for}")
 
             elif "T1w" in image_file:
                 folder = "anat"

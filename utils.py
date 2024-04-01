@@ -159,28 +159,27 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
     if not dryrun:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-    if method == "hardlink":
-        print("Creating hardlink: {}".format(print_text))
-        if not dryrun:
-            for in_file, out_file in zip(in_files, out_files):
-                os.link(in_file, out_file)
-    elif method == "symlink":
-        print("Creating symlink: {}".format(print_text))
-        if not dryrun:
-            for in_file, out_file in zip(in_files, out_files):
-                os.symlink(in_file, out_file)
-    elif method == "copy":
-        print("Copying file: {}".format(print_text))
-        if not dryrun:
-            for in_file, out_file in zip(in_files, out_files):
+    for in_file, out_file in zip(in_files, out_files):
+        if method == "copy" or in_file[-5:] == ".json":
+            # We want to copy the json sidecar files
+            # Otherwise, we end up editing the original json sidecar file or linking to the sidecar tempalte
+            print("Copying file: {}".format(print_text))
+            if not dryrun:
                 shutil.copy(in_file, out_file)
-    elif method == "move":
-        print("Moving file: {}".format(print_text))
-        if not dryrun:
-            for in_file, out_file in zip(in_files, out_files):
+        elif method == "hardlink":
+            print("Creating hardlink: {}".format(print_text))
+            if not dryrun:
+                os.link(in_file, out_file)
+        elif method == "symlink":
+            print("Creating symlink: {}".format(print_text))
+            if not dryrun:
+                os.symlink(in_file, out_file)
+        elif method == "move":
+            print("Moving file: {}".format(print_text))
+            if not dryrun:
                 shutil.move(in_file, out_file)
-    else:
-        raise ValueError("Unknown method: {}".format(method))
+        else:
+            raise ValueError("Unknown method: {}".format(method))
 
     if intended_for is not None and not dryrun:
         add_intended_for_to_json(output_json_sidecar, intended_for)
@@ -212,6 +211,7 @@ def prep_bold_to_bids(image_file, bids_dir, subject_id, folder, in_files, out_fi
     elif len(eye_tracking_files) > 1:
         warnings.warn("Found multiple eye tracking files for {}. Skipping.".format(image_file))
 
+    # TODO: fix events files for HCPYA dataset
     # check for events files
     events_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "EVs", "*txt"))
     # combine all events files into one tsv file
