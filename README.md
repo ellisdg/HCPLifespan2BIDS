@@ -30,7 +30,7 @@ I found it easiest to use the ndatools `downloadcmd` commandline tool to downloa
 TODO: Add information about the HCP Young Adult dataset.
 
 ## Running fMRIPrep
-I was able to sucessfully run fMRIPrep on the HCP-Development and Young Adult data after turning the bids verification off.
+I was able to successfully run fMRIPrep on the HCP-Development and Young Adult data after turning the bids verification off.
 I have not tested the Aging dataset yet.
 
 ## Useful Links
