@@ -1,10 +1,11 @@
 # [HCPLifespan2BIDS](https://github.com/ellisdg/HCPLifespan2BIDS)
-Converts HCP datasets into BIDS format. Works for both Lifespan and HCPYA.
+Converts HCP datasets into BIDS format. Works for both Lifespan and Young Adult.
+
 `lifespan.py`: Converts the unprocessed imaging data for the HCP Aging and Development (i.e. Lifespan) datasets to BIDS format.
+
 `hcpya.py`: Converts the unprocessed imaging data for the HCP Young Adult dataset to BIDS format.
 
 ## Lifespan
-
 ### Usage
 
 ```
@@ -26,7 +27,6 @@ URIs are the current standard, but as of April 2024 they were not supported by f
 I found it easiest to use the ndatools `downloadcmd` commandline tool to download the data. You can download `downloadcmd` using `pip install nda-tools`.
 
 ## HCP Young Adult
-
 TODO: Add information about the HCP Young Adult dataset.
 
 ## Running fMRIPrep
