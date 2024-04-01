@@ -18,7 +18,7 @@ You can run `python main.py --help` to see all options. The most important ones 
 * --use_bids_uris: If specified, will use BIDS URIs instead of BIDS filenames in the JSON sidecar. This URIs are the current standard, but as of May 2023 they were not supported by fMRIPrep.
 
 ## Running fMRIPrep
-I was able to sucessfully run fMRIPrep on the HCP-Development data after turning the bids verificaiton off.
+I was able to sucessfully run fMRIPrep on the HCP-Development data after turning the bids verification off.
 
 ## Downloading the data
 I found it easiest to use the ndatools `downloadcmd` commandline tool to download the data. You can download `downloadcmd` using `pip install nda-tools`.
@@ -32,6 +32,6 @@ I found it easiest to use the ndatools `downloadcmd` commandline tool to downloa
   (PhaseEncodingDirection should be reversed from that provided by the asker.)
 * [Partial conversion script for converting the HCPYA data to BIDS](https://github.com/datalad-datasets/hcp-functional-connectivity/pull/1/commits/e02970aab710a9c006c12be9cf5b442cc06d1f16)
 * [Neurostars question asking for HCP BIDS data](https://neurostars.org/t/unprocessed-hcp-data-in-bids-format-for-fmriprep/24767/4)
-* [Slice timing for HCPYA](https://wiki.humanconnectome.org/display/PublicData/HCP+fMRI+slice-timing+acquisition+parameters)
+* [Slice timing for HCPYA](https://wiki.humanconnectome.org/docs/HCP%20fMRI%20slice-timing%20acquisition%20parameters.html)
 * [Diffusion readout time](https://neurostars.org/t/what-is-the-totalreadouttime-of-hcp-dwi-data/19622)
 * 
