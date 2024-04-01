@@ -133,6 +133,7 @@ def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", met
                 #     run = run + match.group(1)
                 kwargs["run"] = run
                 intended_for = spin_echo_intended_for(subject_id, use_bids_uris, basename, image_file)
+                print(f"{image_file} --> {subject_id} --> IntendedFor: {intended_for}")
 
             elif "T1w" in image_file:
                 folder = "anat"
