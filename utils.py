@@ -221,7 +221,10 @@ def generate_events_file(bids_dir, image_file, subject_id, folder, overwrite=Fal
                 trial_type = os.path.basename(events_file).replace(".txt", "")
                 with open(events_file, "r") as input_file:
                     for line in input_file.readlines():
-                        rows.append(line.strip().split(" ") + [trial_type])
+                        if "\t" in line:
+                            rows.append(line.strip().split("\t") + [trial_type])
+                        else:
+                            rows.append(line.strip().split(" ") + [trial_type])
             # sort the rows by onset
             rows.sort(key=lambda x: float(x[0]))
             for row in rows:
