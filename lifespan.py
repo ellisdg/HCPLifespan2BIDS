@@ -105,6 +105,8 @@ def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", met
         image_files = glob.glob(os.path.join(subject_folder, "unprocessed/**/*.nii.gz"), recursive=True)
         print("Found {} image files.".format(len(image_files)))
         for image_file in image_files:
+            # keep track of the original image file
+            orig_image_file = image_file
 
             if os.path.dirname(image_file).endswith("OTHER_FILES"):
                 continue
@@ -185,8 +187,9 @@ def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", met
                 bids_modality = "sbref"
 
             move_to_bids(image_file=image_file, bids_dir=output_dir, subject_id=subject_id, folder=folder,
-                         modality=bids_modality, method=method, overwrite=overwrite, dryrun=dry_run,
-                         intended_for=intended_for, use_precompiled_sidecars=use_precompiled_sidecars, **kwargs)
+                         orig_image_file=orig_image_file, modality=bids_modality, method=method, overwrite=overwrite,
+                         dryrun=dry_run, intended_for=intended_for, use_precompiled_sidecars=use_precompiled_sidecars,
+                         **kwargs)
 
     first_subject_id = os.path.basename(subject_folders[0]).split("_")[0]
     write_bids_dataset_metadata_files(output_dir, name=get_dataset_name(name, first_subject_id))

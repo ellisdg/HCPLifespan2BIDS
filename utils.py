@@ -102,8 +102,9 @@ def add_intended_for_to_json(json_file, intended_for):
         json.dump(json_dict, f, indent=4, sort_keys=True)
 
 
-def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="hardlink", overwrite=False, dryrun=False,
-                 intended_for=None, exists_ok=True, use_precompiled_sidecars=False, **kwargs):
+def move_to_bids(image_file, bids_dir, subject_id, modality, folder, orig_image_file, method="hardlink",
+                 overwrite=False, dryrun=False, intended_for=None, exists_ok=True, use_precompiled_sidecars=False,
+                 **kwargs):
     output_file = generate_full_output_filename(bids_dir, subject_id, modality, folder, **kwargs)
     in_files = [image_file]
     out_files = [output_file]
@@ -138,8 +139,10 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
         else:
             warnings.warn("No bvec file found for {}".format(image_file))
     elif modality == "bold":
-        in_files, out_files = prep_bold_to_bids(image_file, bids_dir, subject_id, folder, in_files, out_files,
-                                                output_file, overwrite=overwrite, dryrun=dryrun, **kwargs)
+        # check for auxiliary fMRI files such as events, physiological, and eye movement files
+        # these files will be based on the original unprocessed image file
+        in_files, out_files = add_bold_auxiliary_files(orig_image_file, bids_dir, subject_id, folder, in_files, out_files,
+                                                       output_file, overwrite=overwrite, dryrun=dryrun, **kwargs)
 
     if os.path.exists(output_file):
         if exists_ok and not overwrite:
@@ -159,10 +162,23 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
     if not dryrun:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
+    move_files(in_files, out_files, method=method, dryrun=dryrun, print_text=print_text)
+
+    if intended_for is not None and not dryrun:
+        add_intended_for_to_json(output_json_sidecar, intended_for)
+
+    if "task-" in os.path.basename(output_file) and not dryrun:
+        # add task name to json sidecar
+        # get task name from filename using regular expression
+        task_name = re.search("task-([a-zA-Z0-9]+)_", os.path.basename(output_file)).group(1)
+        add_task_name_to_json(output_json_sidecar, task_name)
+
+
+def move_files(in_files, out_files, method="hardlink", dryrun=False, print_text=""):
     for in_file, out_file in zip(in_files, out_files):
         if method == "copy" or in_file[-5:] == ".json":
             # We want to copy the json sidecar files
-            # Otherwise, we end up editing the original json sidecar file or linking to the sidecar tempalte
+            # Otherwise, we end up editing the original json sidecar file or linking to the sidecar template
             print("Copying file: {}".format(print_text))
             if not dryrun:
                 shutil.copy(in_file, out_file)
@@ -181,18 +197,35 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, method="har
         else:
             raise ValueError("Unknown method: {}".format(method))
 
-    if intended_for is not None and not dryrun:
-        add_intended_for_to_json(output_json_sidecar, intended_for)
 
-    if "task-" in os.path.basename(output_file) and not dryrun:
-        # add task name to json sidecar
-        # get task name from filename using regular expression
-        task_name = re.search("task-([a-zA-Z0-9]+)_", os.path.basename(output_file)).group(1)
-        add_task_name_to_json(output_json_sidecar, task_name)
+def generate_events_file(bids_dir, image_file, subject_id, folder, overwrite=False, dryrun=False, skip=("Sync.txt",),
+                         **kwargs):
+    # check for events files
+    events_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "EVs", "*txt"))
+    # combine all events files into one tsv file
+    tsv_output_file = generate_full_output_filename(bids_dir, subject_id, modality="events", folder=folder,
+                                                    extension=".tsv", **kwargs)
+    tsv_header = ["onset", "duration", "value", "trial_type"]
+    if len(events_files) > 0 and not dryrun and (overwrite or not os.path.exists(tsv_output_file)):
+        print("Combining events files into {}".format(tsv_output_file))
+        with open(tsv_output_file, "w") as output_file:
+            output_file.write("\t".join(tsv_header) + "\n")
+            rows = list()
+            for events_file in events_files:
+                if os.path.basename(events_file) in skip:
+                    continue
+                trial_type = os.path.basename(events_file).replace(".txt", "")
+                with open(events_file, "r") as input_file:
+                    for line in input_file.readlines():
+                        rows.append(line.strip().split(" ") + [trial_type])
+            # sort the rows by onset
+            rows.sort(key=lambda x: float(x[0]))
+            for row in rows:
+                output_file.write("\t".join(row) + "\n")
 
 
-def prep_bold_to_bids(image_file, bids_dir, subject_id, folder, in_files, out_files, output_file,
-                      overwrite=False, dryrun=False, **kwargs):
+def add_bold_auxiliary_files(image_file, bids_dir, subject_id, folder, in_files, out_files, output_file,
+                             overwrite=False, dryrun=False, **kwargs):
     # add physio, eye tracking, and events files
     # check for physio files
     physio_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.csv"))
@@ -211,27 +244,8 @@ def prep_bold_to_bids(image_file, bids_dir, subject_id, folder, in_files, out_fi
     elif len(eye_tracking_files) > 1:
         warnings.warn("Found multiple eye tracking files for {}. Skipping.".format(image_file))
 
-    # TODO: fix events files for HCPYA dataset
-    # check for events files
-    events_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "EVs", "*txt"))
-    # combine all events files into one tsv file
-    tsv_output_file = generate_full_output_filename(bids_dir, subject_id, modality="events", folder=folder,
-                                                    extension=".tsv", **kwargs)
-    tsv_header = ["onset", "duration", "value", "trial_type"]
-    if len(events_files) > 0 and not dryrun and (overwrite or not os.path.exists(tsv_output_file)):
-        print("Combining events files into {}".format(tsv_output_file))
-        with open(tsv_output_file, "w") as f:
-            f.write("\t".join(tsv_header) + "\n")
-            rows = list()
-            for events_file in events_files:
-                trial_type = os.path.basename(events_file).replace(".txt", "")
-                with open(events_file, "r") as f2:
-                    for line in f2.readlines():
-                        rows.append(line.strip().split(" ") + [trial_type])
-            # sort the rows by onset
-            rows.sort(key=lambda x: float(x[0]))
-            for row in rows:
-                f.write("\t".join(row) + "\n")
+    generate_events_file(bids_dir, image_file, subject_id, folder, overwrite=overwrite, dryrun=dryrun, **kwargs)
+
     return in_files, out_files
 
 
@@ -315,33 +329,3 @@ def spin_echo_intended_for(subject_id, use_bids_uris, basename, image_file):
     else:
         return None
 
-
-def convert_ev_dir(ev_dir, out_file):
-    """
-    HCP has the events in a directory called "EVs". This function converts the events to a BIDS compatible format.
-    :param ev_dir: "EVs" directory in the HCP dataset.
-    :param out_file: events file to be created with .tsv extension.
-    :return: Location of the output file.
-    """
-
-    from pandas.errors import EmptyDataError
-    import pandas as pd
-    # TODO: figure out how to encode errors
-    dfs = list()
-    for ev in os.listdir(ev_dir):
-
-        if ev in ("Sync.txt",) or ".txt" not in ev:
-            continue
-        try:
-            df_ev = pd.read_csv(os.path.join(ev_dir, ev), delimiter="\t", header=None)
-        except EmptyDataError:
-            continue
-        df_ev.columns = ["onset", "duration", "strength"]
-        df_ev["trial_type"] = ev.split(".txt")[0]
-        dfs.append(df_ev)
-
-    df = pd.concat(dfs).sort_values("onset").set_index("onset")
-    assert not os.path.exists(out_file)
-    df.to_csv(out_file, sep="\t")
-
-    return out_file
