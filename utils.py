@@ -235,20 +235,32 @@ def add_bold_auxiliary_files(image_file, bids_dir, subject_id, folder, in_files,
                              overwrite=False, dryrun=False, **kwargs):
     # add physio, eye tracking, and events files
     # check for physio files
-    # TODO: convert physio files to tsv.gz compatible with BIDS
+    convert_physio_files(image_file, output_file, in_files, out_files, dryrun=dryrun)
+
+    # check for eye tracking file
+    eye_tracking_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "*.mp4"))
+    if len(eye_tracking_files) == 1:
+        in_files.append(eye_tracking_files[0])
+        out_files.append(generate_full_output_filename(bids_dir, subject_id, modality="physio", folder=folder,
+                                                       recording="eyetracking", extension=".mp4", **kwargs))
+    elif len(eye_tracking_files) > 1:
+        warnings.warn("Found multiple eye tracking files for {}. Skipping.".format(image_file))
+
+    generate_events_file(bids_dir, image_file, subject_id, folder, overwrite=overwrite, dryrun=dryrun, **kwargs)
+
+    return in_files, out_files
+
+
+def convert_physio_files(image_file, output_file, in_files, out_files, dryrun=False):
     # For HPCPYA the physio file is in .txt format with tab separated values (no headers)
     # For Lifespan the physio file is in csv format (with headers)
     # BIDS requires no headers along with a JSON sidecar file
     # https://bids-specification.readthedocs.io/en/stable/modality-specific-files/physiological-and-other-continuous-recordings.html
-    # The JSON sidecar must have the SamplingFrequency, StartTime, and Columns fields
-    # Recommended fields are: Manufacturer, ManufacturersModelName, SoftwareVersions, and DeviceSerialNumber
-    # I need to lookup the required values for HCPYA and Lifespan before proceeding
-    # HCPYA sampling frequency is 400Hz
-    # HCPYA columns are: TriggerPulse, Respiration, PulseOx
 
     output_physio_file = output_file.replace("_bold.nii.gz", "_physio.csv")
     physio_csv_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.csv"))
     if len(physio_csv_files) == 1:
+        # TODO: convert physio files to tsv.gz compatible with BIDS
         in_files.append(physio_csv_files[0])
         out_files.append(output_physio_file)
     elif len(physio_csv_files) > 1:
@@ -269,19 +281,6 @@ def add_bold_auxiliary_files(image_file, bids_dir, subject_id, folder, in_files,
             json_sidecar = os.path.abspath(os.path.join(os.path.dirname(__file__), "hcpya-sidecars", "physio.json"))
             in_files.append(json_sidecar)
             out_files.append(output_json_sidecar)
-
-    # check for eye tracking file
-    eye_tracking_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "*.mp4"))
-    if len(eye_tracking_files) == 1:
-        in_files.append(eye_tracking_files[0])
-        out_files.append(generate_full_output_filename(bids_dir, subject_id, modality="physio", folder=folder,
-                                                       recording="eyetracking", extension=".mp4", **kwargs))
-    elif len(eye_tracking_files) > 1:
-        warnings.warn("Found multiple eye tracking files for {}. Skipping.".format(image_file))
-
-    generate_events_file(bids_dir, image_file, subject_id, folder, overwrite=overwrite, dryrun=dryrun, **kwargs)
-
-    return in_files, out_files
 
 
 def match_json_sidecar(image_file):
