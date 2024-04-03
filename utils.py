@@ -199,9 +199,9 @@ def move_files(in_files, out_files, method="hardlink", dryrun=False, print_text=
 
 
 def generate_events_file(bids_dir, image_file, subject_id, folder, overwrite=False, dryrun=False, skip=("Sync.txt",),
-                         **kwargs):
+                         task_software="*", **kwargs):
     # check for events files
-    wildcard = os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "EVs", "*.txt")
+    wildcard = os.path.join(os.path.dirname(image_file), "LINKED_DATA", task_software, "EVs", "*.txt")
     print("Searching for events files: {}".format(wildcard))
     events_files = glob.glob(wildcard)
     print("Found {} events files for {}".format(len(events_files), image_file))
