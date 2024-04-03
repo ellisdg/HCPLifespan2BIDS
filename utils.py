@@ -201,7 +201,11 @@ def move_files(in_files, out_files, method="hardlink", dryrun=False, print_text=
 def generate_events_file(bids_dir, image_file, subject_id, folder, overwrite=False, dryrun=False, skip=("Sync.txt",),
                          **kwargs):
     # check for events files
-    events_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "EVs", "*txt"))
+    wildcard = os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "EVs", "*.txt")
+    print("Searching for events files: {}".format(wildcard))
+    events_files = glob.glob(wildcard)
+    print("Found {} events files for {}".format(len(events_files), image_file))
+    print("Events files: ", events_files)
     # combine all events files into one tsv file
     tsv_output_file = generate_full_output_filename(bids_dir, subject_id, modality="events", folder=folder,
                                                     extension=".tsv", **kwargs)
