@@ -235,6 +235,14 @@ def add_bold_auxiliary_files(image_file, bids_dir, subject_id, folder, in_files,
                              overwrite=False, dryrun=False, **kwargs):
     # add physio, eye tracking, and events files
     # check for physio files
+    # TODO: convert physio files to tsv.gz compatible with BIDS
+    # For HPCPYA the physio file is in .txt format with tab separated values (no headers)
+    # For Lifespan the physio file is in csv format (with headers)
+    # BIDS requires no headers along with a JSON sidecar file
+    # https://bids-specification.readthedocs.io/en/stable/modality-specific-files/physiological-and-other-continuous-recordings.html
+    # The JSON sidecar must have the SamplingFrequency, StartTime, and Columns fields
+    # Recommended fields are: Manufacturer, ManufacturersModelName, SoftwareVersions, and DeviceSerialNumber
+    # I need to lookup the required values for HCPYA and Lifespan before proceeding
     physio_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.csv"))
     if len(physio_files) == 1:
         in_files.append(physio_files[0])
