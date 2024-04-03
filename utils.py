@@ -258,6 +258,7 @@ def add_bold_auxiliary_files(image_file, bids_dir, subject_id, folder, in_files,
         physio_txt_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.txt"))
         output_physio_file = output_file.replace("_bold.nii.gz", "_physio.tsv.gz")
         if not dryrun and len(physio_txt_files) == 1:
+            os.makedirs(os.path.dirname(output_physio_file), exist_ok=True)
             # gunzip the text file
             import gzip
             with open(physio_txt_files[0], "rb") as f_in:
