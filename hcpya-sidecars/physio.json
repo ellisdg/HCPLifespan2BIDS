@@ -1,0 +1,6 @@
+{
+  "SamplingFrequency": 400,
+  "StartTime": 0,
+  "Columns": ["TriggerPulse", "Respiration", "PulseOx"],
+  "Manufacturer": "Siemens"
+}

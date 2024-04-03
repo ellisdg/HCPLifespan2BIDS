@@ -111,7 +111,7 @@ def move_to_bids(image_file, bids_dir, subject_id, modality, folder, orig_image_
 
     if use_precompiled_sidecars:
         # use predefined json sidecar files from this project
-        # the sidcar files can be found under the "sidecars" directory
+        # the sidcare files can be found under the "hcpya-sidecars" directory
         json_sidecar = match_json_sidecar(output_file)
     else:
         json_sidecar = image_file.replace(".nii.gz", ".json")
@@ -243,12 +243,31 @@ def add_bold_auxiliary_files(image_file, bids_dir, subject_id, folder, in_files,
     # The JSON sidecar must have the SamplingFrequency, StartTime, and Columns fields
     # Recommended fields are: Manufacturer, ManufacturersModelName, SoftwareVersions, and DeviceSerialNumber
     # I need to lookup the required values for HCPYA and Lifespan before proceeding
-    physio_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.csv"))
-    if len(physio_files) == 1:
-        in_files.append(physio_files[0])
-        out_files.append(output_file.replace("_bold.nii.gz", "_physio.csv"))
-    elif len(physio_files) > 1:
+    # HCPYA sampling frequency is 400Hz
+    # HCPYA columns are: TriggerPulse, Respiration, PulseOx
+
+    output_physio_file = output_file.replace("_bold.nii.gz", "_physio.csv")
+    physio_csv_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.csv"))
+    if len(physio_csv_files) == 1:
+        in_files.append(physio_csv_files[0])
+        out_files.append(output_physio_file)
+    elif len(physio_csv_files) > 1:
         warnings.warn("Found multiple physio files for {}. Skipping.".format(image_file))
+    else:
+        # search for physio files in txt format (HCPYA)
+        physio_txt_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PHYSIO", "*.txt"))
+        output_physio_file = output_file.replace("_bold.nii.gz", "_physio.tsv.gz")
+        if not dryrun and len(physio_txt_files) == 1:
+            # gunzip the text file
+            import gzip
+            with open(physio_txt_files[0], "rb") as f_in:
+                with gzip.open(output_physio_file, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            # copy the json sidecar file
+            output_json_sidecar = output_physio_file.replace(".tsv.gz", ".json")
+            json_sidecar = os.path.abspath(os.path.join(os.path.dirname(__file__), "hcpya-sidecars", "physio.json"))
+            in_files.append(json_sidecar)
+            out_files.append(output_json_sidecar)
 
     # check for eye tracking file
     eye_tracking_files = glob.glob(os.path.join(os.path.dirname(image_file), "LINKED_DATA", "PSYCHOPY", "*.mp4"))
@@ -286,7 +305,7 @@ def match_json_sidecar(image_file):
         sidecar_basename = f"dir-{acq_dir}_{sidecar_basename}"
     if task_name is not None:
         sidecar_basename = f"task-{task_name}_{sidecar_basename}"
-    sidecar_filename = os.path.abspath(os.path.join(os.path.dirname(__file__), "sidecars", sidecar_basename))
+    sidecar_filename = os.path.abspath(os.path.join(os.path.dirname(__file__), "hcpya-sidecars", sidecar_basename))
 
     if os.path.exists(sidecar_filename):
         return sidecar_filename
