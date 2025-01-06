@@ -351,7 +351,7 @@ def spin_echo_intended_for(subject_id, use_bids_uris, basename, image_file):
     elif "T1w" in basename:
         intended_for_kwargs["modality"] = "T1w"
         intended_for_kwargs["folder"] = "anat"
-    elif "T2w" in basename:
+    elif "T2w" in basename or "HiResHp" in basename:
         intended_for_kwargs["modality"] = "T2w"
         intended_for_kwargs["folder"] = "anat"
     else:

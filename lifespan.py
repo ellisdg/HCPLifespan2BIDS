@@ -17,7 +17,7 @@ def create_parser():
     parser.add_argument("--overwrite", action="store_true", help="overwrite existing files.")
     parser.add_argument("--method", type=str, default="hardlink", choices=["hardlink", "symlink", "copy", "move"],
                         help="method to use for linking files. (default: hardlink). "
-                             "JSON sidecars will always be copied.")
+                             "JSON sidecars will always be copied as these are edited to comply with BIDS formatting.")
     parser.add_argument("--use_bids_uris", action="store_true",
                         help="use BIDS URIs for setting the IntendedFor field for single bad reference and spin echo "
                              "images. This is now required by BIDS, but I am not making it the default because fMRIprep"
@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--name", type=str, default="auto",
                         help="name of the dataset. (default: 'auto'). 'auto' will try to determine if the dataset is "
                              "the HCP Aging or HCP Development dataset based on the contents of the nda_dir.")
+    # TODO: add option to use the Siemens bias field corrected images instead of the raw images
     return parser.parse_args()
 
 
@@ -85,7 +86,7 @@ def set_phase_encoding_direction(kwargs, image_file, dirs=("AP", "PA")):
         kwargs["dir"] = pe_dir
 
 
-def find_gradient_warped_file(image_file):
+def find_gradient_unwarped_file(image_file):
     gradunwarp_file = image_file.replace("unprocessed/3T", "gradunwarp")
     if not os.path.exists(gradunwarp_file):
         raise ValueError(f"Gradient unwarped file not found: {gradunwarp_file}")
@@ -153,7 +154,7 @@ def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", met
                         raise ValueError(f"Derived T2w file not found: {image_file}")
             elif "fMRI" in image_file:
                 if grad_unwarp:
-                    image_file = find_gradient_warped_file(image_file)
+                    image_file = find_gradient_unwarped_file(image_file)
                 folder = "func"
                 bids_modality = "bold"
                 task = os.path.basename(os.path.dirname(image_file))
@@ -175,6 +176,10 @@ def run(wildcard, use_bids_uris=False, pe_dirs=("AP", "PA"), output_dir=".", met
             elif "PCASL" in image_file:
                 bids_modality = "asl"
                 folder = "perf"
+            elif "HiResHp" in image_file:
+                bids_modality = "T2w"
+                folder = "anat"
+                kwargs["acq"] = "highres"
             else:
                 folder = None
                 bids_modality = None

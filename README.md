@@ -26,6 +26,9 @@ URIs are the current standard, but as of April 2024 they were not supported by f
 ### Downloading the data
 I found it easiest to use the ndatools `downloadcmd` commandline tool to download the data. You can download `downloadcmd` using `pip install nda-tools`.
 
+### Limitations
+* The ASL data from HCP Development is not yet stored according to the BIDS specification. 
+
 ## HCP Young Adult
 TODO: Add information about the HCP Young Adult dataset.
 
