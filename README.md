@@ -27,14 +27,14 @@ URIs are the current standard, but as of April 2024 they were not supported by f
 I found it easiest to use the ndatools `downloadcmd` commandline tool to download the data. You can download `downloadcmd` using `pip install nda-tools`.
 
 ### Limitations
-* The ASL data from HCP Development is not yet stored according to the BIDS specification. 
+* The ASL data from HCP Development is not yet stored according to the BIDS specification.
+* The task tsv files contain an extra column that is not bids compliant.
 
 ## HCP Young Adult
 TODO: Add information about the HCP Young Adult dataset.
 
 ## Running fMRIPrep
-I was able to successfully run fMRIPrep on the HCP-Development and Young Adult data after turning the bids verification off.
-I have not tested the Aging dataset yet.
+I was able to successfully run fMRIPrep on the HCP-Development, Aging, and Young Adult data.
 
 ## Useful Links
 * [suyashdb/hcp2bids](https://github.com/suyashdb/hcp2bids)
